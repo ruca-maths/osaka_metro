@@ -58,7 +58,7 @@ details{margin-top:10px;font-size:.88rem;color:var(--sub)}summary{cursor:pointer
 <ul class="foot">
 <li>運賃は発着駅間の最短経路の距離で決まります（1〜3km 190円／〜7km 240円／〜13km 290円／〜19km 340円／19km超 390円。公式の普通運賃・バリアフリー料金込み）。</li>
 <li>駅間キロは、各路線の駅別の営業キロ（累計）から算出した駅間の営業キロです（0.1km単位）。区分の境目付近では、実際の運賃計算と差が出る可能性があります。</li>
-<li>乗換は同名駅のほか、梅田・東梅田・西梅田の3駅間でも可能です（3駅は1つの駅として扱い、距離は0km、ルート上で通れるのは1回まで）。この3駅は公式には改札外乗継の扱いなので、実際の乗換方法は駅や公式サイトで確認してください。夢洲駅発着は加算運賃が別にかかります。</li>
+<li>乗換は同名駅のほか、梅田・東梅田・西梅田の3駅間でも可能です（3駅は1つの駅として扱い、距離は0km、ルート上で通れるのは1回まで）。梅田3駅は改札外乗継で、乗継は30分以内に行う必要があります（このサイトでは時間は考慮していません）。運賃は旅客営業規則第47・48・73条に基づき、梅田3駅を乗り継ぐ場合は乗継前後のキロ程を通算して計算します。心斎橋と四ツ橋も運賃計算上は同一駅として扱い、乗換できるものとしています。第50条の特定区間（例：新大阪〜谷町四丁目は2区）も反映しています。夢洲発着は加算運賃90円を含みます。</li>
 <li>探索は時間制限つきで、最長であることは保証されません（表示に「厳密解」とあるものは全探索で確定した結果です）。実際に乗る前に、Osaka Metro の乗車規則を駅や公式サイトで確認してください。</li>
 </ul>
 </main>
@@ -81,11 +81,15 @@ if(i+2<t.length){const b=id(t[i+2]),w=+t[i+1],ex=adj[a].find(e=>e.t===b);
 if(ex){if(!ex.ls.includes(li))ex.ls.push(li)}else{const ls=[li];adj[a].push({t:b,w,ls});adj[b].push({t:a,w,ls})}}}});
 LINES.push(["乗換","#7a8791",""]);const XF=LINES.length-1,UM=["梅田","東梅田","西梅田"].map(n=>idx[n]);
 for(let i=0;i<3;i++)for(let j=i+1;j<3;j++){const ls=[XF];adj[UM[i]].push({t:UM[j],w:0,ls});adj[UM[j]].push({t:UM[i],w:0,ls})}
-const N=names.length,YUMESHIMA=idx["夢洲"];const GR=Array(N).fill(-1);UM.forEach(i=>GR[i]=0);
-const fare=d=>d<=3.0001?190:d<=7.0001?240:d<=13.0001?290:d<=19.0001?340:390;
-function dijk(s){const d=Array(N).fill(1e9),u=Array(N).fill(0);d[s]=0;
-for(let k=0;k<N;k++){let x=-1;for(let i=0;i<N;i++)if(!u[i]&&(x<0||d[i]<d[x]))x=i;u[x]=1;for(const e of adj[x])if(d[x]+e.w<d[e.t])d[e.t]=d[x]+e.w}return d}
-function solve(s,t,goal,ms){
+const SS=[idx["心斎橋"],idx["四ツ橋"]];{const ls=[XF];adj[SS[0]].push({t:SS[1],w:0,ls});adj[SS[1]].push({t:SS[0],w:0,ls})}
+const N=names.length,YUMESHIMA=idx["夢洲"];const GR=Array(N).fill(-1);UM.forEach(i=>GR[i]=0);SS.forEach(i=>GR[i]=1);
+const FARES=[190,240,290,340,390],tier=d=>d<=3.0001?0:d<=7.0001?1:d<=13.0001?2:d<=19.0001?3:4;
+const SP={};[["新大阪","谷町四丁目",1],["西中島南方","西長堀",1],["中津","弁天町",1],["中津","緑橋",1],["昭和町","森ノ宮",2],["昭和町","新深江",2],["西田辺","谷町四丁目",2],["長居","谷町六丁目",2],["天王寺","鶴橋",1]].forEach(([a,b,k])=>{SP[idx[a]+"|"+idx[b]]=SP[idx[b]+"|"+idx[a]]=k});
+const sc=(a,b)=>(a===YUMESHIMA||b===YUMESHIMA)?90:0;
+const fareOf=(a,b,d)=>FARES[SP[a+"|"+b]??tier(d)]+sc(a,b);
+function dijk(s,w=true){const d=Array(N).fill(1e9),u=Array(N).fill(0);d[s]=0;
+for(let k=0;k<N;k++){let x=-1;for(let i=0;i<N;i++)if(!u[i]&&(x<0||d[i]<d[x]))x=i;u[x]=1;for(const e of adj[x]){if(!w&&e.ls[0]===XF)continue;if(d[x]+e.w<d[e.t])d[e.t]=d[x]+e.w}}return d}
+function solve(s,t,goal,ms,chk){
 const vis=new Uint8Array(N),pn=[s],pe=[],stamp=new Int32Array(N),stack=[];let st=0;
 const maxE=adj.map(a=>Math.max(...a.map(e=>e.w)));let ub=maxE.reduce((x,y)=>x+y,0)-maxE[s];
 let best=-1,bp=null,exact=false,steps=0,limit=0,abort=false;const dl=performance.now()+ms;
@@ -94,17 +98,25 @@ function reach(u){st++;stack.length=0;stack.push(u);stamp[u]=st;
 while(stack.length){const x=stack.pop();for(const e of A[x]){const y=e.t;if(!vis[y]&&stamp[y]!==st){if(goal[y])return true;stamp[y]=st;stack.push(y)}}}return false}
 function dfs(u,len){
 if(++steps>limit||((steps&511)===0&&performance.now()>dl)){abort=true;return}
-if(u!==s&&(t>=0?u===t:(goal?goal[u]:true))&&len>best){best=len;bp={n:pn.slice(),e:pe.slice(),len}}
+if(u!==s&&(t>=0?u===t:(goal?goal[u]:true))&&len>best&&pe[pe.length-1].ls[0]!==XF&&(!chk||chk(pn,pe))){best=len;bp={n:pn.slice(),e:pe.slice(),len}}
 if(t>=0&&u===t)return;
 if(len+ub<=best+1e-9)return;
 if(goal&&!reach(u))return;
-for(const e of A[u]){const y=e.t;if(vis[y])continue;const g=GR[y];if(g>=0&&gc[g]>0&&GR[u]!==g)continue;vis[y]=1;if(g>=0)gc[g]++;ub-=maxE[y];pn.push(y);pe.push(e);dfs(y,len+e.w);pn.pop();pe.pop();ub+=maxE[y];if(g>=0)gc[g]--;vis[y]=0;if(abort)return}}
+for(const e of A[u]){const y=e.t;if(vis[y])continue;if(e.ls[0]===XF&&(u===s||y===t))continue;const g=GR[y];if(g>=0&&gc[g]>0&&GR[u]!==g)continue;vis[y]=1;if(g>=0)gc[g]++;ub-=maxE[y];pn.push(y);pe.push(e);dfs(y,len+e.w);pn.pop();pe.pop();ub+=maxE[y];if(g>=0)gc[g]--;vis[y]=0;if(abort)return}}
 for(let r=0;;r++){
 if(r>0)A=A.map(a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}return a});
 steps=0;abort=false;limit=50000*(r+1);dfs(s,0);
 if(!abort){exact=true;break}
 if(performance.now()>dl)break}
 return bp&&{...bp,exact}}
+let CX;
+function routeFare(p){const{s,dp,dn,DN}=CX,t=p.n[p.n.length-1],f=fareOf(s,t,dp[t]);
+let ai=-1,bi=-1;p.e.forEach((e,i)=>{if(e.ls[0]===XF&&GR[p.n[i]]===0){if(ai<0)ai=i;bi=i+1}});
+if(ai<0)return{f,ex:false};
+const A=p.n[ai],B=p.n[bi];
+if(fareOf(s,A,dp[A])<=f)return{f,ex:false};
+const g=FARES[tier(dn[A]+DN[B][t])]+sc(s,t);
+return{f:Math.max(f,g),ex:true}}
 function segs(p){const out=[];let cur=null;
 p.e.forEach((e,i)=>{let l;
 if(cur&&e.ls.includes(cur.l))l=cur.l;else{const nx=p.e[i+1];l=(nx&&e.ls.find(x=>nx.ls.includes(x)));if(l===undefined||l===false)l=e.ls[0]}
@@ -114,12 +126,12 @@ const $=q=>document.getElementById(q);
 const esc=s=>s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 function card(title,p,s,dist){
 if(!p)return`<section class="panel res"><h2>${title}</h2><p>条件に合うルートが見つかりませんでした。</p></section>`;
-const end=p.n[p.n.length-1],sg=segs(p),km=p.len.toFixed(1),sd=dist[end],f=fare(sd);
-const sur=(s===YUMESHIMA||end===YUMESHIMA)?`<div class="note">夢洲駅発着のため、上記の運賃に加算運賃がかかります。</div>`:"";
+const end=p.n[p.n.length-1],sg=segs(p),km=p.len.toFixed(1),sd=dist[end],rf=routeFare(p),f=rf.f;
+const sur=((s===YUMESHIMA||end===YUMESHIMA)?`<div class="note">運賃には夢洲発着の加算運賃（90円）を含みます。</div>`:"")+(rf.ex?`<div class="note">梅田3駅の乗継で、発駅から乗継駅までの運賃が全体の運賃を超えるため、乗継時に精算が必要です。運賃は乗継前後のキロ程を通算して計算しています。</div>`:"");
 return`<section class="panel res"><h2>${title}</h2>
 <dl class="stats"><div><dt>乗車距離（概算）</dt><dd>${km} km</dd></div><div><dt>通過駅数</dt><dd>${p.n.length-p.e.filter(e=>e.ls[0]===XF).length}駅</dd></div><div><dt>乗換</dt><dd>${Math.max(0,sg.filter(g=>g.l!==XF).length-1)}回</dd></div><div><dt>運賃</dt><dd>${f}円</dd></div><div><dt>最短経路</dt><dd>${sd.toFixed(1)} km</dd></div></dl>
 <p style="margin:0 0 8px;font-weight:700">${esc(names[s])} から ${esc(names[end])} まで</p>
-<ol class="seg">${sg.map(g=>`<li><span class="pill" style="background:${LINES[g.l][1]}">${LINES[g.l][0]}</span><span><b>${esc(names[g.st[0]])}</b> から <b>${esc(names[g.st[g.st.length-1]])}</b><br><span class="d">${g.l===XF?"梅田3駅間を乗換":`${g.st.length-1}駅・${g.km.toFixed(1)} km`}</span></span></li>`).join("")}</ol>
+<ol class="seg">${sg.map(g=>`<li><span class="pill" style="background:${LINES[g.l][1]}">${LINES[g.l][0]}</span><span><b>${esc(names[g.st[0]])}</b> から <b>${esc(names[g.st[g.st.length-1]])}</b><br><span class="d">${g.l===XF?"同一駅扱いの乗換":`${g.st.length-1}駅・${g.km.toFixed(1)} km`}</span></span></li>`).join("")}</ol>
 <details><summary>通る駅をすべて見る</summary><p>${p.n.map(i=>esc(names[i])).join(" → ")}</p></details>
 <p class="d" style="font-size:.82rem;color:var(--sub);margin:8px 0 0">${p.exact?"厳密解（全探索で確定）":"制限時間内で見つかった最長ルート"}</p>${sur}</section>`}
 const wait=()=>new Promise(r=>setTimeout(r,30));
@@ -130,7 +142,7 @@ const s=idx[$("s").value.trim()],tv=$("t").value.trim(),t=tv?idx[tv]:undefined;
 if(s===undefined){msg.textContent="出発駅を候補から選んでください。";return}
 if(tv&&t===undefined){msg.textContent="到着駅が駅名と一致しません。候補から選ぶか、空欄にしてください。";return}
 if(t===s){msg.textContent="出発駅と到着駅が同じです。別の駅を選んでください。";return}
-busy=true;out.innerHTML="";const dist=dijk(s);
+busy=true;out.innerHTML="";const dist=dijk(s),DN={};UM.forEach(i=>DN[i]=dijk(i,false));CX={s,dp:dist,dn:dijk(s,false),DN};
 try{
 if(t!==undefined){
 msg.textContent="2駅間の最長ルートを探索中…（最大3秒）";await wait();
@@ -140,9 +152,9 @@ else{
 msg.textContent="最長ルートを探索中…（1/2）";await wait();
 out.innerHTML=card("この駅からの最長ルート",solve(s,-1,null,2200),s,dist);
 msg.textContent="最安値で行ける最長ルートを探索中…（2/2）";await wait();
-let mn=1e9;for(let i=0;i<N;i++)if(i!==s&&dist[i]<mn)mn=dist[i];const tier=fare(mn),g=new Uint8Array(N);
-for(let i=0;i<N;i++)if(i!==s&&fare(dist[i])===tier&&i!==YUMESHIMA)g[i]=1;
-out.insertAdjacentHTML("beforeend",card(`最安値（${tier}円）での最長ルート`,solve(s,-1,g,2200),s,dist))}
+let mf=1e9;for(let i=0;i<N;i++)if(i!==s)mf=Math.min(mf,fareOf(s,i,dist[i]));
+const chk=(pn,pe)=>routeFare({n:pn,e:pe}).f===mf;
+out.insertAdjacentHTML("beforeend",card(`最安値（${mf}円）での最長ルート`,solve(s,-1,null,2200,chk),s,dist))}
 msg.textContent="探索が終わりました。"}
 finally{busy=false}}
 $("stripe").innerHTML=LINES.slice(0,XF).map(l=>`<i style="background:${l[1]}"></i>`).join("");
